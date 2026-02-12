@@ -9,13 +9,15 @@ const supabase = createClient(
 export default function Callback() {
   useEffect(() => {
     const run = async () => {
-      // هذا السطر هو اللي “يحوّل” الرابط لجلسة تسجيل دخول
-      await supabase.auth.exchangeCodeForSession(window.location.href);
-
-      // بعد نجاح تسجيل الدخول ارجع للصفحة الرئيسية
-      window.location.replace("/");
+      try {
+        // يحوّل "الكود" اللي بالرابط إلى Session
+        await supabase.auth.exchangeCodeForSession(window.location.href);
+      } catch (e) {
+        // حتى لو صار خطأ، رجّع للصفحة الرئيسية
+      } finally {
+        window.location.replace("/");
+      }
     };
-
     run();
   }, []);
 
