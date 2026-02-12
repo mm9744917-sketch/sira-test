@@ -8,13 +8,16 @@ const supabase = createClient(
 
 export default function Callback() {
   useEffect(() => {
-    const handleAuth = async () => {
-      await supabase.auth.getSession();
-      window.location.href = "/";
+    const run = async () => {
+      // هذا السطر هو اللي “يحوّل” الرابط لجلسة تسجيل دخول
+      await supabase.auth.exchangeCodeForSession(window.location.href);
+
+      // بعد نجاح تسجيل الدخول ارجع للصفحة الرئيسية
+      window.location.replace("/");
     };
 
-    handleAuth();
+    run();
   }, []);
 
-  return <p>Logging you in...</p>;
+  return null;
 }
