@@ -12,67 +12,52 @@ export default function Home() {
   const [message, setMessage] = useState('')
 
   useEffect(() => {
-    checkUser()
+    supabase.auth.getSession().then(({ data }) => {
+      setUser(data.session?.user ?? null)
+    })
 
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user ?? null)
     })
 
-    return () => {
-      listener?.subscription?.unsubscribe?.()
-    }
+    return () => listener?.subscription?.unsubscribe?.()
   }, [])
 
-  const checkUser = async () => {
-    const { data } = await supabase.auth.getSession()
-    setUser(data.session?.user ?? null)
-  }
-
   const signInWithGoogle = async () => {
-    setMessage('')
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google'
-    })
-    if (error) setMessage('Error: ' + error.message)
+    await supabase.auth.signInWithOAuth({ provider: 'google' })
   }
 
   const signInWithEmail = async () => {
-    setMessage('')
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        // مهم: يرجعك على موقعك بعد الضغط على رابط الإيميل
         emailRedirectTo: 'https://sira-test-4c9w.vercel.app'
       }
     })
-    if (error) setMessage('Error: ' + error.message)
-    else setMessage('✅ Check your email for the login link')
+    if (error) setMessage(error.message)
+    else setMessage('Check your email for login link 🚀')
   }
 
   const logout = async () => {
     await supabase.auth.signOut()
   }
 
-  // ✅ إذا مسجل دخول
   if (user) {
     return (
-      <div style={{ textAlign: 'center', marginTop: '100px' }}>
-        <h1>SIRA AI Dashboard</h1>
-        <p>✅ Logged in as: {user.email}</p>
-        <button onClick={logout} style={{ padding: '10px 20px' }}>
-          Logout
-        </button>
+      <div style={styles.container}>
+        <h1 style={styles.title}>SIRA AI</h1>
+        <p style={styles.text}>Logged in as: {user.email}</p>
+        <button style={styles.buttonGold} onClick={logout}>Logout</button>
       </div>
     )
   }
 
-  // ✅ إذا مش مسجل دخول
   return (
-    <div style={{ textAlign: 'center', marginTop: '100px' }}>
-      <h1>SIRA AI Login</h1>
+    <div style={styles.container}>
+      <h1 style={styles.title}>SIRA AI</h1>
 
-      <button onClick={signInWithGoogle} style={{ padding: '10px 20px' }}>
-        Login with Google
+      <button style={styles.buttonGoogle} onClick={signInWithGoogle}>
+        Continue with Google
       </button>
 
       <div style={{ marginTop: '25px' }}>
@@ -81,15 +66,67 @@ export default function Home() {
           placeholder="Enter your email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          style={{ padding: '10px', width: '260px' }}
+          style={styles.input}
         />
         <br /><br />
-        <button onClick={signInWithEmail} style={{ padding: '10px 20px' }}>
-          Login with Email
+        <button style={styles.buttonGold} onClick={signInWithEmail}>
+          Continue with Email
         </button>
       </div>
 
-      <p style={{ marginTop: '15px' }}>{message}</p>
+      <p style={styles.message}>{message}</p>
     </div>
   )
+}
+
+const styles = {
+  container: {
+    height: '100vh',
+    backgroundColor: '#000',
+    color: '#fff',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'center',
+    alignItems: 'center',
+    fontFamily: 'system-ui'
+  },
+  title: {
+    fontSize: '40px',
+    marginBottom: '40px',
+    color: '#D4AF37',
+    letterSpacing: '2px'
+  },
+  input: {
+    padding: '12px',
+    width: '260px',
+    borderRadius: '8px',
+    border: '1px solid #D4AF37',
+    backgroundColor: '#111',
+    color: '#fff'
+  },
+  buttonGold: {
+    padding: '12px 25px',
+    backgroundColor: '#D4AF37',
+    color: '#000',
+    border: 'none',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    fontWeight: 'bold'
+  },
+  buttonGoogle: {
+    padding: '12px 25px',
+    backgroundColor: '#fff',
+    color: '#000',
+    border: 'none',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    fontWeight: 'bold'
+  },
+  text: {
+    marginBottom: '20px'
+  },
+  message: {
+    marginTop: '20px',
+    color: '#D4AF37'
+  }
 }
