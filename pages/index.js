@@ -46,35 +46,70 @@ export default function Home() {
     return (
       <div style={styles.container}>
         <h1 style={styles.title}>SIRA AI</h1>
-        <p style={styles.text}>Logged in as: {user.email}</p>
-        <button style={styles.buttonGold} onClick={logout}>Logout</button>
+        <p style={{ marginBottom: 20 }}>Logged in as: {user.email}</p>
+        <button style={styles.goldButton} onClick={logout}>Logout</button>
       </div>
     )
   }
 
   return (
     <div style={styles.container}>
-      <h1 style={styles.title}>SIRA AI</h1>
+      <div className="stars"></div>
 
-      <button style={styles.buttonGoogle} onClick={signInWithGoogle}>
+      <h1 style={styles.title} className="typing">SIRA AI</h1>
+
+      <input
+        type="email"
+        placeholder="Enter your email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        style={styles.input}
+      />
+
+      <button style={styles.goldButton} onClick={signInWithEmail}>
+        Continue with Email
+      </button>
+
+      <button style={styles.googleButton} onClick={signInWithGoogle}>
         Continue with Google
       </button>
 
-      <div style={{ marginTop: '25px' }}>
-        <input
-          type="email"
-          placeholder="Enter your email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          style={styles.input}
-        />
-        <br /><br />
-        <button style={styles.buttonGold} onClick={signInWithEmail}>
-          Continue with Email
-        </button>
-      </div>
+      <p style={{ marginTop: 20, color: '#D4AF37' }}>{message}</p>
 
-      <p style={styles.message}>{message}</p>
+      <style jsx>{`
+        .stars {
+          position: fixed;
+          width: 100%;
+          height: 100%;
+          background: transparent;
+          background-image: radial-gradient(white 1px, transparent 1px);
+          background-size: 40px 40px;
+          animation: moveStars 60s linear infinite;
+          opacity: 0.15;
+          z-index: 0;
+        }
+
+        @keyframes moveStars {
+          from { transform: translateY(0); }
+          to { transform: translateY(-1000px); }
+        }
+
+        .typing {
+          overflow: hidden;
+          border-right: .15em solid #D4AF37;
+          white-space: nowrap;
+          animation: typing 2.5s steps(20, end), blink .8s infinite;
+        }
+
+        @keyframes typing {
+          from { width: 0 }
+          to { width: 8ch }
+        }
+
+        @keyframes blink {
+          50% { border-color: transparent }
+        }
+      `}</style>
     </div>
   )
 }
@@ -83,50 +118,49 @@ const styles = {
   container: {
     height: '100vh',
     backgroundColor: '#000',
-    color: '#fff',
     display: 'flex',
     flexDirection: 'column',
     justifyContent: 'center',
     alignItems: 'center',
-    fontFamily: 'system-ui'
+    fontFamily: 'system-ui',
+    color: '#fff',
+    position: 'relative'
   },
   title: {
-    fontSize: '40px',
-    marginBottom: '40px',
+    fontSize: '42px',
     color: '#D4AF37',
-    letterSpacing: '2px'
+    marginBottom: '40px',
+    letterSpacing: '3px'
   },
   input: {
-    padding: '12px',
-    width: '260px',
-    borderRadius: '8px',
+    padding: '14px',
+    width: '280px',
+    borderRadius: '30px',
     border: '1px solid #D4AF37',
     backgroundColor: '#111',
-    color: '#fff'
+    color: '#fff',
+    marginBottom: '15px',
+    textAlign: 'center'
   },
-  buttonGold: {
-    padding: '12px 25px',
+  goldButton: {
+    padding: '14px 30px',
+    borderRadius: '30px',
+    border: 'none',
     backgroundColor: '#D4AF37',
     color: '#000',
-    border: 'none',
-    borderRadius: '8px',
+    fontWeight: 'bold',
     cursor: 'pointer',
-    fontWeight: 'bold'
+    marginBottom: '12px',
+    width: '280px'
   },
-  buttonGoogle: {
-    padding: '12px 25px',
-    backgroundColor: '#fff',
-    color: '#000',
-    border: 'none',
-    borderRadius: '8px',
+  googleButton: {
+    padding: '14px 30px',
+    borderRadius: '30px',
+    border: '1px solid #D4AF37',
+    backgroundColor: '#111',
+    color: '#D4AF37',
+    fontWeight: 'bold',
     cursor: 'pointer',
-    fontWeight: 'bold'
-  },
-  text: {
-    marginBottom: '20px'
-  },
-  message: {
-    marginTop: '20px',
-    color: '#D4AF37'
+    width: '280px'
   }
 }
