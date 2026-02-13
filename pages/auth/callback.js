@@ -9,17 +9,15 @@ const supabase = createClient(
 export default function Callback() {
   useEffect(() => {
     const run = async () => {
-      try {
-        // يحوّل "الكود" اللي بالرابط إلى Session
-        await supabase.auth.exchangeCodeForSession(window.location.href);
-      } catch (e) {
-        // حتى لو صار خطأ، رجّع للصفحة الرئيسية
-      } finally {
-        window.location.replace("/");
-      }
+      // يحوّل code الموجود بالرابط إلى session
+      const { error } = await supabase.auth.exchangeCodeForSession(window.location.href);
+
+      // بعد ما يخلص يرجعك للصفحة الرئيسية
+      window.location.replace(error ? "/?error=oauth" : "/");
     };
+
     run();
   }, []);
 
-  return null;
+  return <p style={{ textAlign: "center", marginTop: 80 }}>Signing you in…</p>;
 }
