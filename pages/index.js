@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+// /pages/index.js
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -7,485 +8,528 @@ const supabase = createClient(
 );
 
 export default function Home() {
-  const [user, setUser] = useState(null);
   const [email, setEmail] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [motionEnabled, setMotionEnabled] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [userEmail, setUserEmail] = useState("");
+  const cardRef = useRef(null);
 
-  const tiltRef = useRef(null);
-  const glowRef = useRef(null);
-
-  useEffect(() => {
-    // session
-    (async () => {
-      const { data } = await supabase.auth.getSession();
-      setUser(data.session?.user ?? null);
-    })();
-
-    const { data: listener } = supabase.auth.onAuthStateChange(
-      (_event, session) => setUser(session?.user ?? null)
-    );
-
-    return () => listener.subscription.unsubscribe();
+  // نجوم بسيطة (بدون canvas / بدون permissions)
+  const starLayers = useMemo(() => {
+    // 3 طبقات نجوم بكثافات مختلفة
+    return [
+      { size: 1, opacity: 0.35, duration: 26, density: 130 },
+      { size: 1.6, opacity: 0.25, duration: 40, density: 90 },
+      { size: 2.2, opacity: 0.18, duration: 60, density: 55 },
+    ];
   }, []);
 
-  // Touch/mouse tilt (fallback)
   useEffect(() => {
-    const el = tiltRef.current;
-    if (!el) return;
+    let mounted = true;
 
-    const onMove = (clientX, clientY) => {
-      const r = el.getBoundingClientRect();
-      const px = (clientX - (r.left + r.width / 2)) / (r.width / 2);
-      const py = (clientY - (r.top + r.height / 2)) / (r.height / 2);
-      const rotY = px * 6;
-      const rotX = -py * 6;
-      el.style.setProperty("--rx", `${rotX}deg`);
-      el.style.setProperty("--ry", `${rotY}deg`);
-      if (glowRef.current) {
-        glowRef.current.style.setProperty("--gx", `${(px + 1) * 50}%`);
-        glowRef.current.style.setProperty("--gy", `${(py + 1) * 50}%`);
-      }
-    };
+    // جلب المستخدم الحالي + متابعة التغييرات
+    supabase.auth.getSession().then(({ data }) => {
+      if (!mounted) return;
+      const s = data?.session;
+      setUserEmail(s?.user?.email || "");
+    });
 
-    const mouseMove = (e) => onMove(e.clientX, e.clientY);
-    const touchMove = (e) => {
-      if (!e.touches?.[0]) return;
-      onMove(e.touches[0].clientX, e.touches[0].clientY);
-    };
-
-    window.addEventListener("mousemove", mouseMove, { passive: true });
-    window.addEventListener("touchmove", touchMove, { passive: true });
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUserEmail(session?.user?.email || "");
+    });
 
     return () => {
-      window.removeEventListener("mousemove", mouseMove);
-      window.removeEventListener("touchmove", touchMove);
+      mounted = false;
+      sub?.subscription?.unsubscribe?.();
     };
   }, []);
 
-  // Device motion tilt (phone rotate)
+  // حركة لطيفة بالماوس/اللمس (بدون جيروسكوب)
   useEffect(() => {
-    if (!motionEnabled) return;
-
-    const el = tiltRef.current;
+    const el = cardRef.current;
     if (!el) return;
 
-    const handler = (e) => {
-      // gamma: left-right, beta: front-back
-      const g = Math.max(-30, Math.min(30, e.gamma ?? 0));
-      const b = Math.max(-30, Math.min(30, e.beta ?? 0));
-      const rotY = (g / 30) * 7;
-      const rotX = -(b / 30) * 7;
-      el.style.setProperty("--rx", `${rotX}deg`);
-      el.style.setProperty("--ry", `${rotY}deg`);
+    let raf = 0;
+    const state = { x: 0, y: 0, tx: 0, ty: 0 };
 
-      if (glowRef.current) {
-        const gx = ((g + 30) / 60) * 100;
-        const gy = ((b + 30) / 60) * 100;
-        glowRef.current.style.setProperty("--gx", `${gx}%`);
-        glowRef.current.style.setProperty("--gy", `${gy}%`);
-      }
+    const animate = () => {
+      // smoothing
+      state.x += (state.tx - state.x) * 0.08;
+      state.y += (state.ty - state.y) * 0.08;
+
+      el.style.transform = `translate3d(${state.x}px, ${state.y}px, 0)`;
+      raf = requestAnimationFrame(animate);
     };
 
-    window.addEventListener("deviceorientation", handler, true);
-    return () => window.removeEventListener("deviceorientation", handler, true);
-  }, [motionEnabled]);
+    const onMove = (e) => {
+      const rect = el.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
 
-  async function enableMotion() {
-    // iOS needs permission sometimes
-    try {
-      const DeviceOrientationEventAny = DeviceOrientationEvent;
-      if (DeviceOrientationEventAny?.requestPermission) {
-        const res = await DeviceOrientationEventAny.requestPermission();
-        if (res !== "granted") {
-          alert("لازم تسمح بحركة الجهاز (Motion) من المتصفح");
-          return;
-        }
-      }
-      setMotionEnabled(true);
-    } catch {
-      // If not supported or blocked
-      alert("المتصفح ما سمح/ما بدعم Motion بهالجهاز");
-    }
-  }
+      const p = e.touches?.[0] ? e.touches[0] : e;
+      const dx = (p.clientX - cx) / 18;
+      const dy = (p.clientY - cy) / 18;
 
-  async function loginWithGoogle() {
-    try {
-      setBusy(true);
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          // stay on same origin after login
-          redirectTo: window.location.origin,
-        },
-      });
-      if (error) alert(error.message);
-    } finally {
-      setBusy(false);
-    }
-  }
+      // clamp
+      state.tx = Math.max(-14, Math.min(14, dx));
+      state.ty = Math.max(-14, Math.min(14, dy));
+    };
 
-  async function loginWithEmail() {
-    if (!email) return alert("اكتب الإيميل أولاً");
-    try {
-      setBusy(true);
-      const { error } = await supabase.auth.signInWithOtp({
-        email,
-        options: { emailRedirectTo: window.location.origin },
-      });
-      if (error) alert(error.message);
-      else alert("تفقد إيميلك 📩");
-    } finally {
-      setBusy(false);
-    }
-  }
+    const onLeave = () => {
+      state.tx = 0;
+      state.ty = 0;
+    };
 
-  async function logout() {
+    window.addEventListener("mousemove", onMove, { passive: true });
+    window.addEventListener("touchmove", onMove, { passive: true });
+    window.addEventListener("touchend", onLeave, { passive: true });
+    window.addEventListener("mouseleave", onLeave, { passive: true });
+
+    raf = requestAnimationFrame(animate);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("touchmove", onMove);
+      window.removeEventListener("touchend", onLeave);
+      window.removeEventListener("mouseleave", onLeave);
+    };
+  }, []);
+
+  const popSound = () => {
+    // "انفجار" لطيف بدون ملفات وبدون صلاحيات
     try {
-      setBusy(true);
-      await supabase.auth.signOut();
-    } finally {
-      setBusy(false);
-    }
-  }
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      const ctx = new AudioCtx();
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = "triangle";
+      o.frequency.setValueAtTime(220, ctx.currentTime);
+      o.frequency.exponentialRampToValueAtTime(70, ctx.currentTime + 0.09);
+      g.gain.setValueAtTime(0.0001, ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.14);
+      o.connect(g);
+      g.connect(ctx.destination);
+      o.start();
+      o.stop(ctx.currentTime + 0.16);
+      setTimeout(() => ctx.close(), 260);
+    } catch (_) {}
+  };
+
+  const ripple = (e) => {
+    const btn = e.currentTarget;
+    const r = document.createElement("span");
+    r.className = "ripple";
+    const rect = btn.getBoundingClientRect();
+    const p = e.touches?.[0] ? e.touches[0] : e;
+    const x = p.clientX - rect.left;
+    const y = p.clientY - rect.top;
+    r.style.left = `${x}px`;
+    r.style.top = `${y}px`;
+    btn.appendChild(r);
+    setTimeout(() => r.remove(), 650);
+  };
+
+  const signInEmail = async (e) => {
+    e?.preventDefault?.();
+    if (!email.trim()) return setMsg("اكتب الإيميل أولاً");
+    setLoading(true);
+    setMsg("");
+    popSound();
+
+    const { error } = await supabase.auth.signInWithOtp({ email: email.trim() });
+    setLoading(false);
+
+    if (error) setMsg("Error: " + error.message);
+    else setMsg("تم إرسال رابط تسجيل الدخول على الإيميل ✅");
+  };
+
+  const signInGoogle = async (e) => {
+    e?.preventDefault?.();
+    setLoading(true);
+    setMsg("");
+    popSound();
+
+    // مهم: لازم يكون عندك /pages/auth/callback.js شغال
+    const redirectTo = `${window.location.origin}/auth/callback`;
+
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo },
+    });
+
+    setLoading(false);
+    if (error) setMsg("Error: " + error.message);
+  };
+
+  const logout = async () => {
+    popSound();
+    await supabase.auth.signOut();
+  };
 
   return (
     <div className="wrap">
-      {/* star layers */}
-      <div className="stars s1" />
-      <div className="stars s2" />
-      <div className="stars s3" />
-
-      {/* glow pointer */}
-      <div className="glow" ref={glowRef} />
-
-      {/* top-left logo */}
-      <div className="brandMark" aria-hidden="true">
-        <div className="markCore" />
-        <div className="markShard a" />
-        <div className="markShard b" />
-        <div className="markShard c" />
+      <div className="stars">
+        {starLayers.map((l, i) => (
+          <div
+            key={i}
+            className="starLayer"
+            style={{
+              ["--dotSize"]: `${l.size}px`,
+              ["--dotOpacity"]: l.opacity,
+              ["--dur"]: `${l.duration}s`,
+              ["--density"]: l.density,
+            }}
+          />
+        ))}
       </div>
 
-      <div className="card" ref={tiltRef}>
+      <div className="topLogo" aria-hidden="true">
+        <div className="geoLogo" />
+        <div className="geoGlow" />
+      </div>
+
+      <div className="card" ref={cardRef}>
         <div className="titleRow">
-          <div className="typingWrap">
-            <h1 className="typing" aria-label="SIRA AI">
-              SIRA AI
-            </h1>
-          </div>
-          <div className="subGlow">AI Login Portal</div>
+          <h1 className="typeTitle" aria-label="SIRA AI">
+            <span>SIRA AI</span>
+          </h1>
         </div>
 
-        {!user ? (
-          <>
+        {userEmail ? (
+          <div className="logged">
+            <div className="okRow">
+              <span className="ok">✅</span>
+              <div className="txt">
+                Logged in as: <b>{userEmail}</b>
+              </div>
+            </div>
+            <button className="btn btnDark" onClick={logout} onPointerDown={ripple}>
+              Logout
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={signInEmail} className="form">
             <input
-              className="field"
+              className="input"
               type="email"
-              inputMode="email"
-              autoComplete="email"
               placeholder="Enter your email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              disabled={busy}
+              autoComplete="email"
+              inputMode="email"
             />
 
-            <button className="btn gold" onClick={loginWithEmail} disabled={busy}>
-              Continue with Email
-            </button>
-
-            <button className="btn dark" onClick={loginWithGoogle} disabled={busy}>
-              Continue with Google
+            <button
+              className="btn btnGold"
+              type="submit"
+              disabled={loading}
+              onPointerDown={ripple}
+            >
+              {loading ? "Loading..." : "Continue with Email"}
             </button>
 
             <button
-              className={`btn ghost ${motionEnabled ? "on" : ""}`}
-              onClick={enableMotion}
-              disabled={busy || motionEnabled}
-              title="لتحريك الكرت مع حركة الجهاز"
+              className="btn btnDark"
+              type="button"
+              disabled={loading}
+              onClick={signInGoogle}
+              onPointerDown={ripple}
             >
-              {motionEnabled ? "Motion Enabled ✅" : "Enable Motion (Phone Tilt)"}
+              <span className="gMark" aria-hidden="true">G</span>
+              Continue with Google
             </button>
 
-            <div className="hint">
-              Tip: على iPhone ممكن يطلب إذن “Motion”.
-            </div>
-          </>
-        ) : (
-          <>
-            <p className="logged">
-              ✅ Logged in as <strong>{user.email}</strong>
-            </p>
-            <button className="btn gold" onClick={logout} disabled={busy}>
-              Logout
-            </button>
-          </>
+            {msg ? <p className="msg">{msg}</p> : null}
+          </form>
         )}
       </div>
 
-      <style jsx>{`
-        :global(html, body) {
-          height: 100%;
+      <style jsx global>{`
+        html, body {
+          padding: 0;
           margin: 0;
+          height: 100%;
+          background: #070708;
+          overflow-x: hidden; /* يمنع زحزحة يمين/يسار */
+          -webkit-font-smoothing: antialiased;
+          text-rendering: optimizeLegibility;
         }
+        * { box-sizing: border-box; }
+      `}</style>
 
+      <style jsx>{`
         .wrap {
           min-height: 100vh;
-          display: grid;
-          place-items: center;
-          overflow: hidden;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 28px 16px;
           position: relative;
-          background:
-            radial-gradient(1200px 800px at 50% 30%, rgba(255, 200, 0, 0.12), transparent 60%),
-            radial-gradient(900px 600px at 20% 80%, rgba(120, 190, 255, 0.10), transparent 55%),
-            #050607;
-          color: #fff;
-          font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
-          padding: 24px;
-          touch-action: manipulation;
+          isolation: isolate;
         }
 
-        /* ⭐⭐⭐ multi-layer stars stronger */
+        /* خلفية النجوم */
         .stars {
           position: absolute;
-          inset: -20%;
-          background-repeat: repeat;
+          inset: 0;
+          z-index: 0;
           pointer-events: none;
-          opacity: 0.55;
-          filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.06));
+          overflow: hidden;
         }
-        .s1 {
+        .starLayer {
+          position: absolute;
+          inset: -30%;
+          opacity: var(--dotOpacity);
           background-image:
-            radial-gradient(1px 1px at 10px 20px, rgba(255,255,255,0.9), transparent),
-            radial-gradient(1px 1px at 60px 90px, rgba(255,255,255,0.8), transparent),
-            radial-gradient(1px 1px at 120px 40px, rgba(255,255,255,0.7), transparent),
-            radial-gradient(1px 1px at 200px 160px, rgba(255,255,255,0.75), transparent);
-          background-size: 260px 260px;
-          animation: drift1 70s linear infinite;
-          opacity: 0.35;
+            radial-gradient(rgba(255, 232, 150, 0.8) 1px, transparent 1px);
+          background-size: calc(100% / var(--density)) calc(100% / var(--density));
+          filter: drop-shadow(0 0 10px rgba(255, 200, 70, 0.12));
+          animation: drift var(--dur) linear infinite;
+          transform: translate3d(0,0,0);
         }
-        .s2 {
-          background-image:
-            radial-gradient(2px 2px at 30px 50px, rgba(255,255,255,0.95), transparent),
-            radial-gradient(1px 1px at 170px 120px, rgba(255,255,255,0.85), transparent),
-            radial-gradient(1px 1px at 90px 200px, rgba(255,255,255,0.8), transparent);
-          background-size: 320px 320px;
-          animation: drift2 90s linear infinite;
-          opacity: 0.25;
-        }
-        .s3 {
-          background-image:
-            radial-gradient(1px 1px at 15px 15px, rgba(255,255,255,0.7), transparent),
-            radial-gradient(1px 1px at 240px 80px, rgba(255,255,255,0.7), transparent),
-            radial-gradient(1px 1px at 140px 220px, rgba(255,255,255,0.65), transparent);
-          background-size: 420px 420px;
-          animation: drift3 120s linear infinite;
-          opacity: 0.18;
-        }
-
-        @keyframes drift1 { to { transform: translateY(-300px); } }
-        @keyframes drift2 { to { transform: translateY(-520px); } }
-        @keyframes drift3 { to { transform: translateY(-760px); } }
-
-        /* moving glow following pointer */
-        .glow {
-          --gx: 50%;
-          --gy: 40%;
+        .starLayer::after {
+          content: "";
           position: absolute;
           inset: 0;
-          pointer-events: none;
-          background: radial-gradient(
-            600px 400px at var(--gx) var(--gy),
-            rgba(255, 200, 0, 0.16),
-            transparent 60%
-          );
-          mix-blend-mode: screen;
-          opacity: 0.9;
+          background-image:
+            radial-gradient(rgba(255,255,255,0.65) var(--dotSize), transparent calc(var(--dotSize) + 0.2px));
+          background-size: calc(100% / var(--density)) calc(100% / var(--density));
+          opacity: 0.18;
+          animation: twinkle 3.8s ease-in-out infinite;
         }
 
-        /* ✅ 3D-ish geometric logo top-left */
-        .brandMark {
+        @keyframes drift {
+          0% { transform: translate3d(0,0,0); }
+          100% { transform: translate3d(-6%, 8%, 0); }
+        }
+        @keyframes twinkle {
+          0%,100% { opacity: 0.12; }
+          50% { opacity: 0.35; }
+        }
+
+        /* شعار هندسي "نااار" بدون مكتبات */
+        .topLogo {
           position: absolute;
-          top: 16px;
-          left: 16px;
+          top: 18px;
+          left: 18px;
           width: 54px;
           height: 54px;
-          transform-style: preserve-3d;
-          animation: floatMark 4.8s ease-in-out infinite;
-          filter: drop-shadow(0 12px 26px rgba(255, 200, 0, 0.18));
-          z-index: 3;
-        }
-        @keyframes floatMark {
-          0%, 100% { transform: translateY(0) rotateZ(0deg); }
-          50% { transform: translateY(-6px) rotateZ(6deg); }
-        }
-        .markCore {
-          position: absolute;
-          inset: 10px;
-          border-radius: 14px;
-          background:
-            linear-gradient(135deg, rgba(255, 200, 0, 0.95), rgba(255, 120, 0, 0.55));
-          box-shadow: inset 0 0 0 1px rgba(255,255,255,0.14);
-          transform: rotateX(16deg) rotateY(-22deg);
-        }
-        .markShard {
-          position: absolute;
-          inset: 0;
-          border-radius: 16px;
-          background: linear-gradient(135deg, rgba(30,30,30,0.3), rgba(255,255,255,0.05));
-          border: 1px solid rgba(255,255,255,0.10);
-          transform-style: preserve-3d;
-          animation: shardSpin 3.4s linear infinite;
-        }
-        .markShard.a { transform: rotateX(64deg) rotateY(10deg); opacity: 0.55; }
-        .markShard.b { transform: rotateX(10deg) rotateY(64deg); opacity: 0.45; animation-duration: 4.2s; }
-        .markShard.c { transform: rotateX(35deg) rotateY(35deg); opacity: 0.35; animation-duration: 5.2s; }
-        @keyframes shardSpin { to { transform: rotateX(360deg) rotateY(360deg); } }
-
-        /* ✅ card tilt vars */
-        .card {
-          --rx: 0deg;
-          --ry: 0deg;
-          width: 360px;
-          max-width: 92vw;
-          padding: 28px;
-          border-radius: 24px;
-          background: rgba(15, 16, 18, 0.78);
-          backdrop-filter: blur(12px);
-          border: 1px solid rgba(255, 255, 255, 0.08);
-          box-shadow:
-            0 18px 70px rgba(0, 0, 0, 0.65),
-            0 0 0 1px rgba(255, 200, 0, 0.10),
-            0 0 55px rgba(255, 200, 0, 0.18);
-          transform: perspective(900px) rotateX(var(--rx)) rotateY(var(--ry));
-          transition: transform 120ms ease;
           z-index: 2;
         }
-
-        /* touch feedback */
-        .card:active {
-          transform: perspective(900px) rotateX(var(--rx)) rotateY(var(--ry)) scale(0.99);
+        .geoLogo {
+          width: 54px;
+          height: 54px;
+          border-radius: 14px;
+          background:
+            linear-gradient(135deg, rgba(255, 214, 76, 0.95), rgba(255, 140, 50, 0.75)),
+            radial-gradient(circle at 30% 30%, rgba(255,255,255,0.35), transparent 55%);
+          box-shadow:
+            0 18px 42px rgba(0,0,0,0.55),
+            0 0 34px rgba(255, 180, 60, 0.24);
+          position: relative;
+          transform-style: preserve-3d;
+          animation: floatLogo 4.2s ease-in-out infinite;
+          overflow: hidden;
+        }
+        .geoLogo::before, .geoLogo::after {
+          content: "";
+          position: absolute;
+          inset: 10px;
+          border-radius: 12px;
+          border: 1px solid rgba(0,0,0,0.18);
+          background:
+            conic-gradient(from 210deg,
+              rgba(0,0,0,0.0),
+              rgba(0,0,0,0.25),
+              rgba(255,255,255,0.12),
+              rgba(0,0,0,0.0)
+            );
+          filter: blur(0.2px);
+          mix-blend-mode: overlay;
+        }
+        .geoLogo::after {
+          inset: 16px;
+          border-radius: 10px;
+          opacity: 0.65;
+        }
+        .geoGlow {
+          position: absolute;
+          inset: -10px;
+          border-radius: 18px;
+          background: radial-gradient(circle, rgba(255, 200, 90, 0.22), transparent 60%);
+          filter: blur(8px);
+          animation: glowPulse 2.7s ease-in-out infinite;
         }
 
+        @keyframes floatLogo {
+          0%,100% { transform: translate3d(0,0,0) rotate(0deg); }
+          50% { transform: translate3d(0,-6px,0) rotate(2deg); }
+        }
+        @keyframes glowPulse {
+          0%,100% { opacity: 0.5; transform: scale(1); }
+          50% { opacity: 0.85; transform: scale(1.06); }
+        }
+
+        /* الكارد */
+        .card {
+          width: min(420px, 92vw);
+          background: rgba(18, 18, 20, 0.85);
+          border: 1px solid rgba(255, 210, 90, 0.14);
+          border-radius: 22px;
+          padding: 26px 18px 18px;
+          box-shadow:
+            0 30px 80px rgba(0,0,0,0.55),
+            0 0 0 1px rgba(255, 220, 120, 0.06) inset;
+          backdrop-filter: blur(10px);
+          z-index: 1;
+          will-change: transform;
+        }
+
+        /* العنوان بتأثير كتابة */
         .titleRow {
+          display: flex;
+          justify-content: center;
           margin-bottom: 18px;
         }
-
-        /* Typing effect */
-        .typingWrap {
-          display: inline-block;
-        }
-        .typing {
+        .typeTitle {
           margin: 0;
-          font-size: 40px;
-          letter-spacing: 6px;
-          color: rgba(255, 210, 60, 0.98);
-          text-shadow:
-            0 0 18px rgba(255, 200, 0, 0.35),
-            0 0 42px rgba(255, 160, 0, 0.22);
-          position: relative;
+          font-weight: 800;
+          letter-spacing: 0.12em;
+          text-transform: uppercase;
+          color: #ffd34a;
+          text-shadow: 0 0 26px rgba(255, 210, 80, 0.24);
+          font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+        }
+        .typeTitle span {
+          display: inline-block;
           overflow: hidden;
           white-space: nowrap;
+          border-right: 2px solid rgba(255, 210, 80, 0.9);
           width: 0;
-          border-right: 3px solid rgba(255, 210, 60, 0.95);
-          animation:
-            typing 1.35s steps(7, end) forwards,
-            caret 0.75s step-end infinite,
-            shimmer 2.8s ease-in-out infinite;
+          animation: typing 1.25s steps(12, end) forwards, caret 0.75s step-end infinite;
+        }
+        @keyframes typing { to { width: 9.2ch; } }
+        @keyframes caret {
+          0%, 100% { border-color: transparent; }
+          50% { border-color: rgba(255, 210, 80, 0.9); }
         }
 
-        @keyframes typing { to { width: 7.2ch; } }
-        @keyframes caret { 50% { border-color: transparent; } }
-        @keyframes shimmer {
-          0%, 100% { filter: brightness(1); }
-          50% { filter: brightness(1.15); }
+        .form {
+          display: grid;
+          gap: 12px;
         }
 
-        .subGlow {
-          margin-top: 8px;
-          font-size: 12px;
-          letter-spacing: 2px;
-          text-transform: uppercase;
-          color: rgba(255,255,255,0.62);
-        }
-
-        /* ✅ Same size for input + buttons */
-        .field, .btn {
+        /* نفس المقاس للجميع */
+        .input, .btn {
           width: 100%;
-          height: 50px;
-          border-radius: 30px;
-          border: none;
-          outline: none;
-          box-sizing: border-box;
+          height: 52px;
+          border-radius: 999px;
         }
 
-        .field {
+        .input {
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          outline: none;
           padding: 0 18px;
-          text-align: center;
           font-size: 15px;
-          background: rgba(255,255,255,0.95);
-          color: #111;
-          margin-top: 10px;
-          margin-bottom: 14px;
+          color: #f3f3f3;
+          background: rgba(255,255,255,0.06);
+        }
+        .input::placeholder { color: rgba(255,255,255,0.45); }
+        .input:focus {
+          border-color: rgba(255, 210, 80, 0.45);
+          box-shadow: 0 0 0 4px rgba(255, 210, 80, 0.12);
         }
 
         .btn {
-          margin-bottom: 12px;
-          font-weight: 800;
-          letter-spacing: 0.3px;
+          position: relative;
+          overflow: hidden;
+          border: none;
+          font-weight: 700;
+          letter-spacing: 0.02em;
           cursor: pointer;
-          transition: transform 0.18s ease, filter 0.18s ease, background 0.18s ease;
+          transform: translateZ(0);
+          transition: transform 140ms ease, filter 140ms ease;
           user-select: none;
           -webkit-tap-highlight-color: transparent;
         }
         .btn:active { transform: scale(0.98); }
 
-        .gold {
-          background: linear-gradient(180deg, #ffd54a, #ffb300);
-          color: #161616;
-          box-shadow: 0 10px 30px rgba(255, 180, 0, 0.22);
+        .btnGold {
+          background: linear-gradient(135deg, #ffd34a, #ffb400);
+          color: #111;
+          box-shadow: 0 18px 40px rgba(255, 180, 30, 0.18);
         }
-        .gold:hover { filter: brightness(1.05); transform: translateY(-1px); }
 
-        .dark {
+        .btnDark {
           background: rgba(255,255,255,0.08);
-          color: rgba(255,255,255,0.92);
-          border: 1px solid rgba(255,255,255,0.10);
-        }
-        .dark:hover { filter: brightness(1.08); transform: translateY(-1px); }
-
-        .ghost {
-          background: transparent;
-          color: rgba(255,255,255,0.72);
-          border: 1px dashed rgba(255,255,255,0.22);
-        }
-        .ghost.on {
-          border-style: solid;
-          border-color: rgba(100, 255, 180, 0.35);
-          color: rgba(160, 255, 210, 0.9);
+          color: #f1f1f1;
+          border: 1px solid rgba(255, 210, 80, 0.12);
         }
 
-        .hint {
-          margin-top: 6px;
-          font-size: 12px;
-          color: rgba(255,255,255,0.55);
+        .btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
+        .gMark {
+          display: inline-grid;
+          place-items: center;
+          width: 24px;
+          height: 24px;
+          border-radius: 7px;
+          margin-right: 10px;
+          background: rgba(0,0,0,0.25);
+          border: 1px solid rgba(255,255,255,0.12);
+          font-weight: 900;
+          color: #fff;
+        }
+
+        /* Ripple انفجار ناعم */
+        .ripple {
+          position: absolute;
+          width: 12px;
+          height: 12px;
+          border-radius: 999px;
+          transform: translate(-50%, -50%);
+          left: 50%;
+          top: 50%;
+          pointer-events: none;
+          background: radial-gradient(circle, rgba(255,255,255,0.55), rgba(255,255,255,0.0) 60%);
+          animation: ripple 650ms ease-out forwards;
+          filter: blur(0.2px);
+        }
+        @keyframes ripple {
+          0% { opacity: 0.65; transform: translate(-50%, -50%) scale(1); }
+          100% { opacity: 0; transform: translate(-50%, -50%) scale(18); }
+        }
+
+        .msg {
+          margin: 6px 0 0;
+          text-align: center;
+          color: rgba(255,255,255,0.85);
+          font-size: 13px;
+          opacity: 0.9;
         }
 
         .logged {
-          margin: 6px 0 18px;
+          display: grid;
+          gap: 14px;
+        }
+        .okRow {
+          display: flex;
+          gap: 10px;
+          align-items: center;
+          justify-content: center;
           color: rgba(255,255,255,0.9);
         }
+        .ok { font-size: 18px; }
 
-        /* small screens */
-        @media (max-width: 380px) {
-          .typing { font-size: 34px; letter-spacing: 5px; }
-          .card { padding: 22px; }
-        }
-
-        /* reduce motion accessibility */
-        @media (prefers-reduced-motion: reduce) {
-          .stars, .brandMark, .typing { animation: none !important; }
-          .card { transition: none; }
+        /* تحسين للموبايل */
+        @media (max-width: 420px) {
+          .card { padding: 22px 14px 16px; }
+          .typeTitle { font-size: 28px; }
         }
       `}</style>
     </div>
