@@ -66,15 +66,8 @@ const T = {
 };
 
 function GoogleGIcon() {
-  // Google "G" multi-color (SVG)
   return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 48 48"
-      aria-hidden="true"
-      style={{ display: "block" }}
-    >
+    <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true" style={{ display: "block" }}>
       <path
         fill="#FFC107"
         d="M43.611 20.083H42V20H24v8h11.303C33.695 32.657 29.195 36 24 36c-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.957 3.043l5.657-5.657C34.99 6.053 29.749 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z"
@@ -119,16 +112,48 @@ export default function Home() {
     document.documentElement.lang = lang;
   }, [lang, currentLang.dir]);
 
-  // session
+  // ✅ IMPORTANT: handle OAuth "code" and convert it to a session once
   useEffect(() => {
-    (async () => {
+    const run = async () => {
+      if (typeof window === "undefined") return;
+
+      // إذا رجع من Google ومعه code بالـ URL
+      const url = new URL(window.location.href);
+      const code = url.searchParams.get("code");
+
+      if (code) {
+        // بدّل code ل session
+        const { error } = await supabase.auth.exchangeCodeForSession(code);
+        // نظّف الرابط (حتى ما يضل يرجعك لنفس الحالة)
+        url.searchParams.delete("code");
+        url.searchParams.delete("state");
+        window.history.replaceState({}, "", url.pathname || "/");
+
+        if (error) {
+          console.log("exchangeCodeForSession error:", error.message);
+        }
+      }
+
+      // بعدها هات السيشن الطبيعي
       const { data } = await supabase.auth.getSession();
       setUser(data.session?.user ?? null);
-    })();
+    };
 
-    const { data: listener } = supabase.auth.onAuthStateChange(
-      (_event, session) => setUser(session?.user ?? null)
-    );
+    run();
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+
+      // كمان تنظيف احتياطي إذا في query params
+      if (typeof window !== "undefined") {
+        const u = new URL(window.location.href);
+        if (u.searchParams.get("code") || u.searchParams.get("state")) {
+          u.searchParams.delete("code");
+          u.searchParams.delete("state");
+          window.history.replaceState({}, "", u.pathname || "/");
+        }
+      }
+    });
 
     return () => listener.subscription.unsubscribe();
   }, []);
@@ -204,7 +229,8 @@ export default function Home() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: window.location.origin,
+          // ✅ IMPORTANT: لازم / بالآخر
+          redirectTo: `${window.location.origin}/`,
         },
       });
       if (error) alert(error.message);
@@ -220,7 +246,10 @@ export default function Home() {
       setBusy(true);
       const { error } = await supabase.auth.signInWithOtp({
         email,
-        options: { emailRedirectTo: window.location.origin },
+        options: {
+          // ✅ IMPORTANT: لازم / بالآخر
+          emailRedirectTo: `${window.location.origin}/`,
+        },
       });
       if (error) alert(error.message);
       else alert(L.checkEmail);
@@ -234,6 +263,8 @@ export default function Home() {
     try {
       setBusy(true);
       await supabase.auth.signOut();
+      // تنظيف بسيط بعد الخروج
+      if (typeof window !== "undefined") window.history.replaceState({}, "", "/");
     } finally {
       setBusy(false);
     }
@@ -263,7 +294,9 @@ export default function Home() {
             {currentLang.flag}
           </span>
           <span className="langName">{currentLang.name}</span>
-          <span className="chev" aria-hidden="true">▾</span>
+          <span className="chev" aria-hidden="true">
+            ▾
+          </span>
         </button>
 
         {openLang && (
@@ -297,7 +330,7 @@ export default function Home() {
         <div className="markShard c" />
       </div>
 
-      {/* ✅ Center wrapper — this fixes the “shift to right” بشكل نهائي */}
+      {/* Center wrapper */}
       <div className="center">
         <div className="card" ref={tiltRef}>
           <div className="titleRow">
@@ -354,13 +387,13 @@ export default function Home() {
         :global(html, body) {
           height: 100%;
           margin: 0;
-          overflow-x: hidden; /* ✅ يمنع الانزياح */
+          overflow-x: hidden;
           overscroll-behavior: none;
         }
 
         .wrap {
           position: relative;
-          min-height: 100dvh; /* ✅ أفضل للموبايل */
+          min-height: 100dvh;
           width: 100%;
           overflow: hidden;
           background:
@@ -373,7 +406,6 @@ export default function Home() {
           touch-action: manipulation;
         }
 
-        /* ✅ تمركز مؤكد */
         .center {
           position: absolute;
           inset: 0;
@@ -386,7 +418,7 @@ export default function Home() {
         }
         .card { pointer-events: auto; }
 
-        /* stars */
+        /* stars (bigger) */
         .stars {
           position: absolute;
           inset: -20%;
@@ -426,35 +458,21 @@ export default function Home() {
         @keyframes drift2 { to { transform: translateY(-520px); } }
         @keyframes drift3 { to { transform: translateY(-760px); } }
 
-        /* glow */
         .glow {
           --gx: 50%;
           --gy: 40%;
           position: absolute;
           inset: 0;
           pointer-events: none;
-          background: radial-gradient(
-            600px 400px at var(--gx) var(--gy),
-            rgba(255, 200, 0, 0.16),
-            transparent 60%
-          );
+          background: radial-gradient(600px 400px at var(--gx) var(--gy), rgba(255, 200, 0, 0.16), transparent 60%);
           mix-blend-mode: screen;
           opacity: 0.9;
         }
 
-        /* Language UI top-right */
-        .langBox {
-          position: absolute;
-          top: 14px;
-          right: 14px;
-          z-index: 5;
-        }
+        .langBox { position: absolute; top: 14px; right: 14px; z-index: 5; }
         .langBtn {
-          display: inline-flex;
-          align-items: center;
-          gap: 10px;
-          padding: 10px 12px;
-          border-radius: 14px;
+          display: inline-flex; align-items: center; gap: 10px;
+          padding: 10px 12px; border-radius: 14px;
           border: 1px solid rgba(255,255,255,0.10);
           background: rgba(15,16,18,0.62);
           backdrop-filter: blur(10px);
@@ -479,9 +497,7 @@ export default function Home() {
         }
         .langItem {
           width: 100%;
-          display: flex;
-          align-items: center;
-          gap: 10px;
+          display: flex; align-items: center; gap: 10px;
           padding: 12px 12px;
           background: transparent;
           border: none;
@@ -492,15 +508,8 @@ export default function Home() {
         .langItem:hover { background: rgba(255,255,255,0.06); }
         .langItem.active { background: rgba(255, 200, 0, 0.10); }
 
-        /* flag wave */
-        .flag {
-          font-size: 18px;
-          display: inline-block;
-          transform-origin: 20% 50%;
-        }
-        .wave {
-          animation: wave 1.8s ease-in-out infinite;
-        }
+        .flag { font-size: 18px; display: inline-block; transform-origin: 20% 50%; }
+        .wave { animation: wave 1.8s ease-in-out infinite; }
         @keyframes wave {
           0%, 100% { transform: rotate(0deg); }
           25% { transform: rotate(6deg); }
@@ -508,13 +517,9 @@ export default function Home() {
           75% { transform: rotate(-6deg); }
         }
 
-        /* logo top-left */
         .brandMark {
-          position: absolute;
-          top: 16px;
-          left: 16px;
-          width: 54px;
-          height: 54px;
+          position: absolute; top: 16px; left: 16px;
+          width: 54px; height: 54px;
           transform-style: preserve-3d;
           animation: floatMark 4.8s ease-in-out infinite;
           filter: drop-shadow(0 12px 26px rgba(255, 200, 0, 0.18));
@@ -525,16 +530,14 @@ export default function Home() {
           50% { transform: translateY(-6px) rotateZ(6deg); }
         }
         .markCore {
-          position: absolute;
-          inset: 10px;
+          position: absolute; inset: 10px;
           border-radius: 14px;
           background: linear-gradient(135deg, rgba(255, 200, 0, 0.95), rgba(255, 120, 0, 0.55));
           box-shadow: inset 0 0 0 1px rgba(255,255,255,0.14);
           transform: rotateX(16deg) rotateY(-22deg);
         }
         .markShard {
-          position: absolute;
-          inset: 0;
+          position: absolute; inset: 0;
           border-radius: 16px;
           background: linear-gradient(135deg, rgba(30,30,30,0.3), rgba(255,255,255,0.05));
           border: 1px solid rgba(255,255,255,0.10);
@@ -546,19 +549,15 @@ export default function Home() {
         .markShard.c { transform: rotateX(35deg) rotateY(35deg); opacity: 0.35; animation-duration: 5.2s; }
         @keyframes shardSpin { to { transform: rotateX(360deg) rotateY(360deg); } }
 
-        /* card */
         .card {
-          --rx: 0deg;
-          --ry: 0deg;
-          width: 360px;
-          max-width: 92vw;
+          --rx: 0deg; --ry: 0deg;
+          width: 360px; max-width: 92vw;
           padding: 28px;
           border-radius: 24px;
           background: rgba(15, 16, 18, 0.78);
           backdrop-filter: blur(12px);
           border: 1px solid rgba(255, 255, 255, 0.08);
-          box-shadow:
-            0 18px 70px rgba(0, 0, 0, 0.65),
+          box-shadow: 0 18px 70px rgba(0, 0, 0, 0.65),
             0 0 0 1px rgba(255, 200, 0, 0.10),
             0 0 55px rgba(255, 200, 0, 0.18);
           transform: perspective(900px) rotateX(var(--rx)) rotateY(var(--ry));
@@ -576,19 +575,13 @@ export default function Home() {
           font-size: 40px;
           letter-spacing: 6px;
           color: rgba(255, 210, 60, 0.98);
-          text-shadow:
-            0 0 18px rgba(255, 200, 0, 0.35),
-            0 0 42px rgba(255, 160, 0, 0.22);
+          text-shadow: 0 0 18px rgba(255, 200, 0, 0.35), 0 0 42px rgba(255, 160, 0, 0.22);
           overflow: hidden;
           white-space: nowrap;
           width: 0;
           border-right: 3px solid rgba(255, 210, 60, 0.95);
-          animation:
-            typing 1.35s steps(7, end) forwards,
-            caret 0.75s step-end infinite,
-            shimmer 2.8s ease-in-out infinite;
+          animation: typing 1.35s steps(7, end) forwards, caret 0.75s step-end infinite, shimmer 2.8s ease-in-out infinite;
         }
-
         @keyframes typing { to { width: 7.2ch; } }
         @keyframes caret { 50% { border-color: transparent; } }
         @keyframes shimmer { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.15); } }
@@ -609,12 +602,11 @@ export default function Home() {
           outline: none;
         }
 
-        /* Email always LTR */
         .field {
           padding: 0 18px;
           direction: ltr;
           text-align: left;
-          font-size: 16px; /* iPhone no zoom */
+          font-size: 16px;
           background: rgba(255,255,255,0.95);
           color: #111;
           margin-top: 10px;
@@ -646,7 +638,6 @@ export default function Home() {
         }
         .dark:hover { filter: brightness(1.08); transform: translateY(-1px); }
 
-        /* Google button layout */
         .google {
           display: flex;
           align-items: center;
@@ -654,28 +645,17 @@ export default function Home() {
           gap: 10px;
         }
         .gIcon {
-          width: 18px;
-          height: 18px;
+          width: 18px; height: 18px;
           display: inline-flex;
           align-items: center;
           justify-content: center;
           filter: drop-shadow(0 2px 6px rgba(0,0,0,0.35));
         }
-        .gText {
-          display: inline-block;
-          line-height: 1;
-        }
+        .gText { line-height: 1; }
 
-        .hint {
-          margin-top: 6px;
-          font-size: 12px;
-          color: rgba(255,255,255,0.55);
-        }
+        .hint { margin-top: 6px; font-size: 12px; color: rgba(255,255,255,0.55); }
 
-        .logged {
-          margin: 6px 0 18px;
-          color: rgba(255,255,255,0.9);
-        }
+        .logged { margin: 6px 0 18px; color: rgba(255,255,255,0.9); }
 
         @media (max-width: 380px) {
           .typing { font-size: 34px; letter-spacing: 5px; }
