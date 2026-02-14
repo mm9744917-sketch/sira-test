@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
+import { useRouter } from "next/router";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -89,6 +90,8 @@ function GoogleGIcon() {
 }
 
 export default function Home() {
+  const router = useRouter();
+
   const [user, setUser] = useState(null);
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
@@ -112,19 +115,21 @@ export default function Home() {
     document.documentElement.lang = lang;
   }, [lang, currentLang.dir]);
 
-  // ✅ IMPORTANT: handle OAuth "code" and convert it to a session once
+  // ✅ OAuth callback handler + redirect to dashboard when session exists
   useEffect(() => {
+    let mounted = true;
+
     const run = async () => {
       if (typeof window === "undefined") return;
 
-      // إذا رجع من Google ومعه code بالـ URL
       const url = new URL(window.location.href);
       const code = url.searchParams.get("code");
 
+      // إذا رجع من Google ومعه code
       if (code) {
-        // بدّل code ل session
         const { error } = await supabase.auth.exchangeCodeForSession(code);
-        // نظّف الرابط (حتى ما يضل يرجعك لنفس الحالة)
+
+        // نظّف الرابط من code/state
         url.searchParams.delete("code");
         url.searchParams.delete("state");
         window.history.replaceState({}, "", url.pathname || "/");
@@ -134,29 +139,37 @@ export default function Home() {
         }
       }
 
-      // بعدها هات السيشن الطبيعي
+      // هات السيشن
       const { data } = await supabase.auth.getSession();
-      setUser(data.session?.user ?? null);
+      const sessionUser = data.session?.user ?? null;
+
+      if (!mounted) return;
+
+      setUser(sessionUser);
+
+      // ✅ إذا في user روح عالداشبورد
+      if (sessionUser) {
+        router.replace("/dashboard");
+      }
     };
 
     run();
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
+      const u = session?.user ?? null;
+      setUser(u);
 
-      // كمان تنظيف احتياطي إذا في query params
-      if (typeof window !== "undefined") {
-        const u = new URL(window.location.href);
-        if (u.searchParams.get("code") || u.searchParams.get("state")) {
-          u.searchParams.delete("code");
-          u.searchParams.delete("state");
-          window.history.replaceState({}, "", u.pathname || "/");
-        }
+      // ✅ إذا صار login خلال الصفحة
+      if (u) {
+        router.replace("/dashboard");
       }
     });
 
-    return () => listener.subscription.unsubscribe();
-  }, []);
+    return () => {
+      mounted = false;
+      listener.subscription.unsubscribe();
+    };
+  }, [router]);
 
   // Touch/mouse tilt (NO iPhone permission)
   useEffect(() => {
@@ -229,7 +242,7 @@ export default function Home() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          // ✅ IMPORTANT: لازم / بالآخر
+          // ✅ خليه يرجع للصفحة الرئيسية (وبعدها نحوله للداشبورد)
           redirectTo: `${window.location.origin}/`,
         },
       });
@@ -247,24 +260,12 @@ export default function Home() {
       const { error } = await supabase.auth.signInWithOtp({
         email,
         options: {
-          // ✅ IMPORTANT: لازم / بالآخر
+          // ✅ بعد ما يضغط الرابط من الإيميل يرجع لهون
           emailRedirectTo: `${window.location.origin}/`,
         },
       });
       if (error) alert(error.message);
       else alert(L.checkEmail);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function logout() {
-    softVibrate();
-    try {
-      setBusy(true);
-      await supabase.auth.signOut();
-      // تنظيف بسيط بعد الخروج
-      if (typeof window !== "undefined") window.history.replaceState({}, "", "/");
     } finally {
       setBusy(false);
     }
@@ -342,42 +343,30 @@ export default function Home() {
             <div className="subGlow">{L.subtitle}</div>
           </div>
 
-          {!user ? (
-            <>
-              <input
-                className="field"
-                type="email"
-                inputMode="email"
-                autoComplete="email"
-                placeholder={L.emailPh}
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                disabled={busy}
-              />
+          {/* ✅ دائماً صفحة login (بعد login بيحولك للداشبورد تلقائياً) */}
+          <input
+            className="field"
+            type="email"
+            inputMode="email"
+            autoComplete="email"
+            placeholder={L.emailPh}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            disabled={busy}
+          />
 
-              <button className="btn gold" onClick={loginWithEmail} disabled={busy}>
-                {L.emailBtn}
-              </button>
+          <button className="btn gold" onClick={loginWithEmail} disabled={busy}>
+            {L.emailBtn}
+          </button>
 
-              <button className="btn dark google" onClick={loginWithGoogle} disabled={busy}>
-                <span className="gIcon" aria-hidden="true">
-                  <GoogleGIcon />
-                </span>
-                <span className="gText">{L.googleBtn}</span>
-              </button>
+          <button className="btn dark google" onClick={loginWithGoogle} disabled={busy}>
+            <span className="gIcon" aria-hidden="true">
+              <GoogleGIcon />
+            </span>
+            <span className="gText">{L.googleBtn}</span>
+          </button>
 
-              <div className="hint">{L.tip}</div>
-            </>
-          ) : (
-            <>
-              <p className="logged">
-                ✅ {L.logged} <strong>{user.email}</strong>
-              </p>
-              <button className="btn gold" onClick={logout} disabled={busy}>
-                {L.logout}
-              </button>
-            </>
-          )}
+          <div className="hint">{L.tip}</div>
         </div>
       </div>
 
@@ -654,8 +643,6 @@ export default function Home() {
         .gText { line-height: 1; }
 
         .hint { margin-top: 6px; font-size: 12px; color: rgba(255,255,255,0.55); }
-
-        .logged { margin: 6px 0 18px; color: rgba(255,255,255,0.9); }
 
         @media (max-width: 380px) {
           .typing { font-size: 34px; letter-spacing: 5px; }
