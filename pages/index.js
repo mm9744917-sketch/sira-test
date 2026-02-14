@@ -6,14 +6,120 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
+/** ---------- i18n ---------- */
+const LANGS = [
+  { key: "ar", name: "العربية", flag: "🇸🇾", dir: "rtl" },
+  { key: "en", name: "English", flag: "🇬🇧", dir: "ltr" },
+  { key: "zh", name: "中文", flag: "🇨🇳", dir: "ltr" },
+  { key: "de", name: "Deutsch", flag: "🇩🇪", dir: "ltr" },
+];
+
+const T = {
+  ar: {
+    title: "SIRA AI",
+    subtitle: "بوابة تسجيل دخول",
+    emailPh: "اكتب بريدك الإلكتروني",
+    emailBtn: "متابعة عبر البريد",
+    googleBtn: "متابعة عبر Google",
+    tip: "اكتب الإيميل ثم اضغط Email أو Google",
+    logged: "تم تسجيل الدخول كـ",
+    logout: "تسجيل الخروج",
+    enterEmailFirst: "اكتب الإيميل أولاً",
+    checkEmail: "تفقد إيميلك 📩",
+  },
+  en: {
+    title: "SIRA AI",
+    subtitle: "AI LOGIN PORTAL",
+    emailPh: "Enter your email",
+    emailBtn: "Continue with Email",
+    googleBtn: "Continue with Google",
+    tip: "Type your email then choose Email or Google",
+    logged: "Logged in as",
+    logout: "Logout",
+    enterEmailFirst: "Enter your email first",
+    checkEmail: "Check your inbox 📩",
+  },
+  zh: {
+    title: "SIRA AI",
+    subtitle: "AI 登录入口",
+    emailPh: "请输入邮箱",
+    emailBtn: "使用邮箱继续",
+    googleBtn: "使用 Google 继续",
+    tip: "输入邮箱后，选择邮箱或 Google 登录",
+    logged: "已登录：",
+    logout: "退出登录",
+    enterEmailFirst: "请先输入邮箱",
+    checkEmail: "请查看邮箱 📩",
+  },
+  de: {
+    title: "SIRA AI",
+    subtitle: "AI LOGIN PORTAL",
+    emailPh: "E-Mail eingeben",
+    emailBtn: "Mit E-Mail fortfahren",
+    googleBtn: "Mit Google fortfahren",
+    tip: "E-Mail eingeben und dann Email oder Google wählen",
+    logged: "Angemeldet als",
+    logout: "Abmelden",
+    enterEmailFirst: "Bitte zuerst die E-Mail eingeben",
+    checkEmail: "Bitte E-Mail prüfen 📩",
+  },
+};
+
+function GoogleGIcon() {
+  // Google "G" multi-color (SVG)
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 48 48"
+      aria-hidden="true"
+      style={{ display: "block" }}
+    >
+      <path
+        fill="#FFC107"
+        d="M43.611 20.083H42V20H24v8h11.303C33.695 32.657 29.195 36 24 36c-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.957 3.043l5.657-5.657C34.99 6.053 29.749 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z"
+      />
+      <path
+        fill="#FF3D00"
+        d="M6.306 14.691l6.571 4.819C14.656 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.957 3.043l5.657-5.657C34.99 6.053 29.749 4 24 4 16.318 4 9.656 8.338 6.306 14.691z"
+      />
+      <path
+        fill="#4CAF50"
+        d="M24 44c5.091 0 9.817-1.95 13.348-5.126l-6.164-5.216C29.195 36 26.74 37 24 37c-5.174 0-9.563-3.314-11.174-7.93l-6.522 5.025C9.61 39.556 16.271 44 24 44z"
+      />
+      <path
+        fill="#1976D2"
+        d="M43.611 20.083H42V20H24v8h11.303c-.723 2.047-2.014 3.77-3.72 4.958l.003-.002 6.164 5.216C36.4 39.5 44 34 44 24c0-1.341-.138-2.65-.389-3.917z"
+      />
+    </svg>
+  );
+}
+
 export default function Home() {
   const [user, setUser] = useState(null);
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
 
+  // language
+  const [lang, setLang] = useState("ar");
+  const [openLang, setOpenLang] = useState(false);
+  const langBtnRef = useRef(null);
+  const langMenuRef = useRef(null);
+
   const tiltRef = useRef(null);
   const glowRef = useRef(null);
 
+  const L = T[lang] || T.en;
+  const currentLang = LANGS.find((x) => x.key === lang) || LANGS[0];
+
+  // apply dir/lang to document
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.documentElement.dir = currentLang.dir;
+    document.documentElement.lang = lang;
+  }, [lang, currentLang.dir]);
+
+  // session
   useEffect(() => {
     (async () => {
       const { data } = await supabase.auth.getSession();
@@ -27,7 +133,7 @@ export default function Home() {
     return () => listener.subscription.unsubscribe();
   }, []);
 
-  // ✅ Touch/mouse tilt فقط (بدون Motion/Permission)
+  // Touch/mouse tilt (NO iPhone permission)
   useEffect(() => {
     const el = tiltRef.current;
     if (!el) return;
@@ -41,11 +147,8 @@ export default function Home() {
       const x = clamp(px);
       const y = clamp(py);
 
-      const rotY = x * 6;
-      const rotX = -y * 6;
-
-      el.style.setProperty("--rx", `${rotX}deg`);
-      el.style.setProperty("--ry", `${rotY}deg`);
+      el.style.setProperty("--rx", `${-y * 6}deg`);
+      el.style.setProperty("--ry", `${x * 6}deg`);
 
       if (glowRef.current) {
         glowRef.current.style.setProperty("--gx", `${(x + 1) * 50}%`);
@@ -68,7 +171,26 @@ export default function Home() {
     };
   }, []);
 
-  // ✅ اهتزاز خفيف وبطيء عند الضغط
+  // close language menu on outside click
+  useEffect(() => {
+    if (!openLang) return;
+
+    const onDown = (e) => {
+      const b = langBtnRef.current;
+      const m = langMenuRef.current;
+      if (b && b.contains(e.target)) return;
+      if (m && m.contains(e.target)) return;
+      setOpenLang(false);
+    };
+
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("touchstart", onDown, { passive: true });
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("touchstart", onDown);
+    };
+  }, [openLang]);
+
   const softVibrate = () => {
     try {
       if (navigator.vibrate) navigator.vibrate([25, 40, 25]);
@@ -93,7 +215,7 @@ export default function Home() {
 
   async function loginWithEmail() {
     softVibrate();
-    if (!email) return alert("اكتب الإيميل أولاً");
+    if (!email) return alert(L.enterEmailFirst);
     try {
       setBusy(true);
       const { error } = await supabase.auth.signInWithOtp({
@@ -101,7 +223,7 @@ export default function Home() {
         options: { emailRedirectTo: window.location.origin },
       });
       if (error) alert(error.message);
-      else alert("تفقد إيميلك 📩");
+      else alert(L.checkEmail);
     } finally {
       setBusy(false);
     }
@@ -119,13 +241,53 @@ export default function Home() {
 
   return (
     <div className="wrap">
-      {/* star layers */}
+      {/* stars */}
       <div className="stars s1" />
       <div className="stars s2" />
       <div className="stars s3" />
 
-      {/* glow pointer */}
+      {/* glow */}
       <div className="glow" ref={glowRef} />
+
+      {/* Language menu (top-right) */}
+      <div className="langBox" dir="ltr">
+        <button
+          ref={langBtnRef}
+          className="langBtn"
+          onClick={() => setOpenLang((v) => !v)}
+          type="button"
+          aria-haspopup="menu"
+          aria-expanded={openLang}
+        >
+          <span className="flag wave" aria-hidden="true">
+            {currentLang.flag}
+          </span>
+          <span className="langName">{currentLang.name}</span>
+          <span className="chev" aria-hidden="true">▾</span>
+        </button>
+
+        {openLang && (
+          <div ref={langMenuRef} className="langMenu" role="menu">
+            {LANGS.map((x) => (
+              <button
+                key={x.key}
+                className={`langItem ${x.key === lang ? "active" : ""}`}
+                onClick={() => {
+                  setLang(x.key);
+                  setOpenLang(false);
+                }}
+                type="button"
+                role="menuitem"
+              >
+                <span className="flag wave" aria-hidden="true">
+                  {x.flag}
+                </span>
+                <span className="langName">{x.name}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* top-left logo */}
       <div className="brandMark" aria-hidden="true">
@@ -135,16 +297,16 @@ export default function Home() {
         <div className="markShard c" />
       </div>
 
-      {/* ✅ الكارد بمنتصف الشاشة دائماً */}
+      {/* ✅ Center wrapper — this fixes the “shift to right” بشكل نهائي */}
       <div className="center">
         <div className="card" ref={tiltRef}>
           <div className="titleRow">
             <div className="typingWrap">
-              <h1 className="typing" aria-label="SIRA AI">
-                SIRA AI
+              <h1 className="typing" aria-label={L.title}>
+                {L.title}
               </h1>
             </div>
-            <div className="subGlow">AI Login Portal</div>
+            <div className="subGlow">{L.subtitle}</div>
           </div>
 
           {!user ? (
@@ -154,37 +316,32 @@ export default function Home() {
                 type="email"
                 inputMode="email"
                 autoComplete="email"
-                placeholder="Enter your email"
+                placeholder={L.emailPh}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 disabled={busy}
               />
 
-              <button
-                className="btn gold"
-                onClick={loginWithEmail}
-                disabled={busy}
-              >
-                Continue with Email
+              <button className="btn gold" onClick={loginWithEmail} disabled={busy}>
+                {L.emailBtn}
               </button>
 
-              <button
-                className="btn dark"
-                onClick={loginWithGoogle}
-                disabled={busy}
-              >
-                Continue with Google
+              <button className="btn dark google" onClick={loginWithGoogle} disabled={busy}>
+                <span className="gIcon" aria-hidden="true">
+                  <GoogleGIcon />
+                </span>
+                <span className="gText">{L.googleBtn}</span>
               </button>
 
-              <div className="hint">Tip: اكتب الإيميل ثم اضغط Email أو Google</div>
+              <div className="hint">{L.tip}</div>
             </>
           ) : (
             <>
               <p className="logged">
-                ✅ Logged in as <strong>{user.email}</strong>
+                ✅ {L.logged} <strong>{user.email}</strong>
               </p>
               <button className="btn gold" onClick={logout} disabled={busy}>
-                Logout
+                {L.logout}
               </button>
             </>
           )}
@@ -192,17 +349,20 @@ export default function Home() {
       </div>
 
       <style jsx>{`
+        :global(*) { box-sizing: border-box; }
+
         :global(html, body) {
           height: 100%;
           margin: 0;
-          overflow: hidden; /* ✅ يمنع أي زحزحة/سكرول */
+          overflow-x: hidden; /* ✅ يمنع الانزياح */
+          overscroll-behavior: none;
         }
 
         .wrap {
-          min-height: 100vh;
-          width: 100vw;
-          overflow: hidden; /* ✅ يمنع انزياح يمين */
           position: relative;
+          min-height: 100dvh; /* ✅ أفضل للموبايل */
+          width: 100%;
+          overflow: hidden;
           background:
             radial-gradient(1200px 800px at 50% 30%, rgba(255, 200, 0, 0.12), transparent 60%),
             radial-gradient(900px 600px at 20% 80%, rgba(120, 190, 255, 0.10), transparent 55%),
@@ -213,16 +373,20 @@ export default function Home() {
           touch-action: manipulation;
         }
 
+        /* ✅ تمركز مؤكد */
         .center {
-          position: relative;
+          position: absolute;
+          inset: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 24px;
           z-index: 2;
-          min-height: calc(100vh - 48px);
-          display: grid;
-          place-items: center; /* ✅ منتصف الشاشة */
-          width: 100%;
+          pointer-events: none;
         }
+        .card { pointer-events: auto; }
 
-        /* ⭐⭐⭐ نجوم أكبر شوي */
+        /* stars */
         .stars {
           position: absolute;
           inset: -20%;
@@ -230,7 +394,6 @@ export default function Home() {
           pointer-events: none;
           filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.06));
         }
-
         .s1 {
           background-image:
             radial-gradient(2px 2px at 10px 20px, rgba(255,255,255,0.9), transparent),
@@ -239,9 +402,8 @@ export default function Home() {
             radial-gradient(2px 2px at 200px 160px, rgba(255,255,255,0.75), transparent);
           background-size: 260px 260px;
           animation: drift1 70s linear infinite;
-          opacity: 0.38;
+          opacity: 0.45;
         }
-
         .s2 {
           background-image:
             radial-gradient(3px 3px at 30px 50px, rgba(255,255,255,0.95), transparent),
@@ -249,9 +411,8 @@ export default function Home() {
             radial-gradient(2px 2px at 90px 200px, rgba(255,255,255,0.8), transparent);
           background-size: 320px 320px;
           animation: drift2 90s linear infinite;
-          opacity: 0.22;
+          opacity: 0.26;
         }
-
         .s3 {
           background-image:
             radial-gradient(2px 2px at 15px 15px, rgba(255,255,255,0.7), transparent),
@@ -259,9 +420,8 @@ export default function Home() {
             radial-gradient(2px 2px at 140px 220px, rgba(255,255,255,0.65), transparent);
           background-size: 420px 420px;
           animation: drift3 120s linear infinite;
-          opacity: 0.16;
+          opacity: 0.18;
         }
-
         @keyframes drift1 { to { transform: translateY(-300px); } }
         @keyframes drift2 { to { transform: translateY(-520px); } }
         @keyframes drift3 { to { transform: translateY(-760px); } }
@@ -282,7 +442,73 @@ export default function Home() {
           opacity: 0.9;
         }
 
-        /* logo */
+        /* Language UI top-right */
+        .langBox {
+          position: absolute;
+          top: 14px;
+          right: 14px;
+          z-index: 5;
+        }
+        .langBtn {
+          display: inline-flex;
+          align-items: center;
+          gap: 10px;
+          padding: 10px 12px;
+          border-radius: 14px;
+          border: 1px solid rgba(255,255,255,0.10);
+          background: rgba(15,16,18,0.62);
+          backdrop-filter: blur(10px);
+          color: rgba(255,255,255,0.92);
+          cursor: pointer;
+          -webkit-tap-highlight-color: transparent;
+          box-shadow: 0 14px 34px rgba(0,0,0,0.35);
+        }
+        .langBtn:active { transform: scale(0.98); }
+        .langName { font-weight: 700; font-size: 13px; letter-spacing: 0.2px; }
+        .chev { opacity: 0.8; font-size: 12px; }
+
+        .langMenu {
+          margin-top: 10px;
+          border-radius: 16px;
+          border: 1px solid rgba(255,255,255,0.10);
+          background: rgba(12,13,15,0.78);
+          backdrop-filter: blur(12px);
+          overflow: hidden;
+          box-shadow: 0 18px 60px rgba(0,0,0,0.55);
+          min-width: 190px;
+        }
+        .langItem {
+          width: 100%;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 12px 12px;
+          background: transparent;
+          border: none;
+          color: rgba(255,255,255,0.90);
+          cursor: pointer;
+          text-align: left;
+        }
+        .langItem:hover { background: rgba(255,255,255,0.06); }
+        .langItem.active { background: rgba(255, 200, 0, 0.10); }
+
+        /* flag wave */
+        .flag {
+          font-size: 18px;
+          display: inline-block;
+          transform-origin: 20% 50%;
+        }
+        .wave {
+          animation: wave 1.8s ease-in-out infinite;
+        }
+        @keyframes wave {
+          0%, 100% { transform: rotate(0deg); }
+          25% { transform: rotate(6deg); }
+          50% { transform: rotate(0deg); }
+          75% { transform: rotate(-6deg); }
+        }
+
+        /* logo top-left */
         .brandMark {
           position: absolute;
           top: 16px;
@@ -294,22 +520,18 @@ export default function Home() {
           filter: drop-shadow(0 12px 26px rgba(255, 200, 0, 0.18));
           z-index: 3;
         }
-
         @keyframes floatMark {
           0%, 100% { transform: translateY(0) rotateZ(0deg); }
           50% { transform: translateY(-6px) rotateZ(6deg); }
         }
-
         .markCore {
           position: absolute;
           inset: 10px;
           border-radius: 14px;
-          background:
-            linear-gradient(135deg, rgba(255, 200, 0, 0.95), rgba(255, 120, 0, 0.55));
+          background: linear-gradient(135deg, rgba(255, 200, 0, 0.95), rgba(255, 120, 0, 0.55));
           box-shadow: inset 0 0 0 1px rgba(255,255,255,0.14);
           transform: rotateX(16deg) rotateY(-22deg);
         }
-
         .markShard {
           position: absolute;
           inset: 0;
@@ -319,7 +541,6 @@ export default function Home() {
           transform-style: preserve-3d;
           animation: shardSpin 3.4s linear infinite;
         }
-
         .markShard.a { transform: rotateX(64deg) rotateY(10deg); opacity: 0.55; }
         .markShard.b { transform: rotateX(10deg) rotateY(64deg); opacity: 0.45; animation-duration: 4.2s; }
         .markShard.c { transform: rotateX(35deg) rotateY(35deg); opacity: 0.35; animation-duration: 5.2s; }
@@ -343,18 +564,12 @@ export default function Home() {
           transform: perspective(900px) rotateX(var(--rx)) rotateY(var(--ry));
           transition: transform 120ms ease;
         }
-
         .card:active {
           transform: perspective(900px) rotateX(var(--rx)) rotateY(var(--ry)) scale(0.99);
         }
 
-        .titleRow {
-          margin-bottom: 18px;
-        }
-
-        .typingWrap {
-          display: inline-block;
-        }
+        .titleRow { margin-bottom: 18px; }
+        .typingWrap { display: inline-block; }
 
         .typing {
           margin: 0;
@@ -376,10 +591,7 @@ export default function Home() {
 
         @keyframes typing { to { width: 7.2ch; } }
         @keyframes caret { 50% { border-color: transparent; } }
-        @keyframes shimmer {
-          0%, 100% { filter: brightness(1); }
-          50% { filter: brightness(1.15); }
-        }
+        @keyframes shimmer { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.15); } }
 
         .subGlow {
           margin-top: 8px;
@@ -395,15 +607,14 @@ export default function Home() {
           border-radius: 30px;
           border: none;
           outline: none;
-          box-sizing: border-box;
         }
 
-        /* ✅ الإيميل LTR وما عاد يعمل زوم على iPhone (16px) */
+        /* Email always LTR */
         .field {
           padding: 0 18px;
           direction: ltr;
           text-align: left;
-          font-size: 16px; /* مهم للآيفون */
+          font-size: 16px; /* iPhone no zoom */
           background: rgba(255,255,255,0.95);
           color: #111;
           margin-top: 10px;
@@ -435,6 +646,26 @@ export default function Home() {
         }
         .dark:hover { filter: brightness(1.08); transform: translateY(-1px); }
 
+        /* Google button layout */
+        .google {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+        }
+        .gIcon {
+          width: 18px;
+          height: 18px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          filter: drop-shadow(0 2px 6px rgba(0,0,0,0.35));
+        }
+        .gText {
+          display: inline-block;
+          line-height: 1;
+        }
+
         .hint {
           margin-top: 6px;
           font-size: 12px;
@@ -452,7 +683,7 @@ export default function Home() {
         }
 
         @media (prefers-reduced-motion: reduce) {
-          .stars, .brandMark, .typing { animation: none !important; }
+          .stars, .brandMark, .typing, .wave { animation: none !important; }
           .card { transition: none; }
         }
       `}</style>
